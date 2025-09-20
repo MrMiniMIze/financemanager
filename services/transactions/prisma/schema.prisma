@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionDirection {
+  debit
+  credit
+}
+
+enum TransactionSource {
+  plaid
+  import
+  manual
+}
+
+enum TransactionStatus {
+  pending
+  cleared
+  disputed
+}
+
+enum ImportStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum RuleMatchType {
+  merchant_equals
+  merchant_contains
+  description_contains
+  amount_greater_than
+  amount_less_than
+}
+
+model Transaction {
+  id             String               @id @default(uuid()) @db.Uuid
+  userId         String               @db.Uuid
+  accountId      String               @db.Uuid
+  postedAt       DateTime
+  amount         Decimal              @db.Decimal(18, 2)
+  direction      TransactionDirection
+  merchantName   String               @db.VarChar(128)
+  description    String?              @db.VarChar(255)
+  categoryId     String?              @db.VarChar(64)
+  notes          String?              @db.VarChar(500)
+  status         TransactionStatus    @default(pending)
+  source         TransactionSource
+  receiptUrl     String?              @db.VarChar(255)
+  externalId     String?              @db.VarChar(128)
+  duplicateOfId  String?              @db.Uuid
+  importBatchId  String?              @db.Uuid
+  reviewedAt     DateTime?
+  reconciledAt   DateTime?
+  reconciledBy   String?              @db.Uuid
+  tags           TransactionTag[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  importBatch TransactionImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@map("transactions")
+  @@unique([id, userId], map: "transactions_id_user_unique")
+  @@unique([userId, externalId], map: "transactions_user_external_unique")
+  @@index([userId, accountId, postedAt], map: "transactions_user_account_posted_idx")
+  @@index([userId, categoryId], map: "transactions_user_category_idx")
+  @@index([userId, merchantName], map: "transactions_user_merchant_idx")
+  @@index([importBatchId], map: "transactions_import_batch_idx")
+}
+
+model TransactionTag {
+  transactionId String   @db.Uuid
+  tag           String   @db.VarChar(32)
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@id([transactionId, tag])
+  @@map("transaction_tags")
+}
+
+model TransactionImportBatch {
+  id                String         @id @default(uuid()) @db.Uuid
+  userId            String         @db.Uuid
+  accountId         String         @db.Uuid
+  uploadId          String         @db.Uuid
+  fileName          String         @db.VarChar(255)
+  hasHeaderRow      Boolean        @default(true)
+  columnMapping     Json
+  status            ImportStatus   @default(queued)
+  failureReason     String?        @db.VarChar(255)
+  idempotencyKey    String?        @db.VarChar(128)
+  processedCount    Int            @default(0)
+  errorCount        Int            @default(0)
+  estimatedDuration Int            @default(45)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  transactions Transaction[]
+
+  @@map("transaction_import_batches")
+  @@unique([userId, uploadId], map: "transaction_import_unique_upload")
+  @@index([userId, accountId], map: "transaction_import_user_account_idx")
+  @@index([idempotencyKey], map: "transaction_import_idempotency_idx")
+}
+
+model CategorizationRule {
+  id         String        @id @default(uuid()) @db.Uuid
+  userId     String        @db.Uuid
+  name       String        @db.VarChar(120)
+  priority   Int           @default(100)
+  matchType  RuleMatchType
+  matchValue String        @db.VarChar(255)
+  categoryId String?       @db.VarChar(64)
+  tags       String[]
+  isActive   Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@map("transaction_rules")
+  @@index([userId, priority], map: "transaction_rules_user_priority_idx")
+}

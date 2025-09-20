@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  active
+  invited
+  suspended
+}
+
+enum PlanTier {
+  free
+  pro
+  family
+}
+
+enum MfaMethod {
+  totp
+}
+
+enum MfaChallengeType {
+  setup
+  login
+  recovery
+}
+
+model User {
+  id                 String                   @id @default(uuid())
+  email              String                   @unique
+  status             UserStatus               @default(active)
+  planTier           PlanTier                 @default(free)
+  roles              String[]                 @default(["user"])
+  emailVerifiedAt    DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  lastLoginAt        DateTime?
+  timezone           String?                  @db.VarChar(64)
+  firstName          String?                  @db.VarChar(100)
+  lastName           String?                  @db.VarChar(100)
+  passwordCredential PasswordCredential?
+  refreshTokens      RefreshToken[]
+  auditEvents        AuditEvent[]
+  emailTokens        EmailVerificationToken[]
+  passwordResets     PasswordResetToken[]
+  mfaSetting         UserMfaSetting?
+  mfaChallenges      MfaChallenge[]
+
+  @@index([email])
+}
+
+model PasswordCredential {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  passwordHash String   @db.VarChar(255)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  disabledAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailVerificationToken {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  userId     String
+  token      String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model RefreshToken {
+  id                String   @id @default(uuid())
+  userId            String
+  tokenHash         String   @db.VarChar(255)
+  issuedAt          DateTime @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  replacedByTokenId String?
+  ipAddress         String?  @db.VarChar(64)
+  userAgent         String?  @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  actor     String   @db.VarChar(64)
+  action    String   @db.VarChar(128)
+  ipAddress String?  @db.VarChar(64)
+  userAgent String?  @db.VarChar(255)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model UserMfaSetting {
+  id              String                 @id @default(uuid())
+  userId          String                 @unique
+  method          MfaMethod
+  secretEncrypted String                 @db.VarChar(256)
+  deviceName      String?                @db.VarChar(100)
+  activatedAt     DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  backupCodes     MfaBackupCode[]
+  remembered      MfaRememberedDevice[]
+  challenges      MfaChallenge[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model MfaBackupCode {
+  id        String   @id @default(uuid())
+  userMfaId String
+  codeHash  String   @db.VarChar(255)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  userMfa UserMfaSetting @relation(fields: [userMfaId], references: [id], onDelete: Cascade)
+
+  @@index([userMfaId])
+  @@index([codeHash])
+}
+
+model MfaRememberedDevice {
+  id        String   @id @default(uuid())
+  userMfaId String
+  tokenHash String   @db.VarChar(255)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastUsedAt DateTime?
+  ipAddress String?  @db.VarChar(64)
+  userAgent String?  @db.VarChar(255)
+
+  userMfa UserMfaSetting @relation(fields: [userMfaId], references: [id], onDelete: Cascade)
+
+  @@index([userMfaId])
+  @@index([expiresAt])
+  @@index([tokenHash])
+}
+
+model MfaChallenge {
+  id               String            @id @default(uuid())
+  userId           String
+  userMfaId        String?
+  method           MfaMethod
+  type             MfaChallengeType
+  secretEncrypted  String?           @db.VarChar(256)
+  deviceName       String?           @db.VarChar(100)
+  context          Json?
+  expiresAt        DateTime
+  consumedAt       DateTime?
+  attempts         Int               @default(0)
+  createdAt        DateTime          @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userMfa UserMfaSetting? @relation(fields: [userMfaId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ThemePreference {
+  light
+  dark
+  system
+}
+
+enum DigestSchedule {
+  daily
+  weekly
+  monthly
+  never
+}
+
+enum LayoutBreakpoint {
+  mobile
+  tablet
+  desktop
+}
+
+model UserProfile {
+  userId    String   @id @db.Uuid
+  email     String?  @unique
+  firstName String   @default("")
+  lastName  String   @default("")
+  phone     String?  @db.VarChar(32)
+  timezone  String   @default("UTC") @db.VarChar(64)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  preferences ProfilePreferences?
+  layouts      DashboardLayout[]
+
+  @@map("user_profiles")
+}
+
+model ProfilePreferences {
+  userId               String           @id @db.Uuid
+  theme                ThemePreference  @default(system)
+  aiAssistantOptIn     Boolean          @default(true)
+  language             String           @default("en-US") @db.VarChar(10)
+  currency             String           @default("USD") @db.Char(3)
+  notificationChannels Json             @default("{\"email\":true,\"sms\":false,\"push\":true,\"inApp\":true}")
+  digestSchedule       DigestSchedule   @default(weekly)
+  featureFlags         Json             @default("{}")
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  profile UserProfile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("profile_preferences")
+}
+
+model DashboardLayout {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @db.Uuid
+  breakpoint LayoutBreakpoint
+  layout     Json
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  profile UserProfile @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([userId, breakpoint])
+  @@map("dashboard_layouts")
+}

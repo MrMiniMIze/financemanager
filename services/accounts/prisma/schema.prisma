@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  active
+  archived
+  pending_unlink
+}
+
+enum AccountRetentionPolicy {
+  keep_transactions
+  purge_after_30_days
+}
+
+model FinancialAccount {
+  id               String                  @id @default(uuid()) @db.Uuid
+  userId           String                  @db.Uuid
+  institutionId    String                  @db.VarChar(128)
+  institutionName  String                  @db.VarChar(128)
+  accountName      String                  @db.VarChar(128)
+  accountType      String                  @db.VarChar(64)
+  accountSubtype   String?                 @db.VarChar(64)
+  mask             String                  @db.VarChar(4)
+  currency         String                  @db.Char(3)
+  currentBalance   Decimal                 @db.Decimal(18, 2)
+  availableBalance Decimal?                @db.Decimal(18, 2)
+  status           AccountStatus           @default(active)
+  lastSyncedAt     DateTime?
+  plaidItemId      String?                 @db.VarChar(128)
+  plaidAccountId   String?                 @db.VarChar(128)
+  notes            String?                 @db.VarChar(500)
+  pendingDeletionAt DateTime?
+  retentionPolicy  AccountRetentionPolicy?
+  deletionReason   String?                 @db.VarChar(32)
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  snapshots AccountSnapshot[]
+
+  @@map("accounts")
+  @@index([userId])
+  @@unique([userId, plaidAccountId], map: "accounts_user_plaid_account_unique")
+}
+
+model AccountSnapshot {
+  id               String   @id @default(uuid()) @db.Uuid
+  accountId        String   @db.Uuid
+  capturedAt       DateTime
+  currentBalance   Decimal  @db.Decimal(18, 2)
+  availableBalance Decimal? @db.Decimal(18, 2)
+  createdAt        DateTime @default(now())
+
+  account FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("account_snapshots")
+  @@unique([accountId, capturedAt], map: "account_snapshots_account_captured_unique")
+  @@index([capturedAt])
+}
